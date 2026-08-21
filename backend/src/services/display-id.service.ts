@@ -8,16 +8,23 @@ export class DisplayIdGenerator {
    */
   static async getNextId(
     prefix: 'CLI' | 'PRJ' | 'QUO' | 'INV' | 'AGR' | 'EVT',
-    tx?: Prisma.TransactionClient
+    tx?: Prisma.TransactionClient,
+    organizationId?: string
   ): Promise<string> {
     const client = tx || prisma;
     const year = new Date().getFullYear();
 
+    let resolvedOrgId = organizationId;
+    if (!resolvedOrgId) {
+      const firstOrg = await client.organization.findFirst();
+      resolvedOrgId = firstOrg?.id || 'default-org-id';
+    }
+
     // Use Raw SQL for atomic locking and incrementing on the DocumentCounter table
     const result = await client.$queryRaw<Array<{ lastValue: number }>>`
-      INSERT INTO "DocumentCounter" ("prefix", "type", "year", "lastValue")
-      VALUES (${prefix}, 'DISPLAY_ID', ${year}, 1)
-      ON CONFLICT ("prefix", "type", "year")
+      INSERT INTO "DocumentCounter" ("organizationId", "prefix", "type", "year", "lastValue")
+      VALUES (${resolvedOrgId}, ${prefix}, 'DISPLAY_ID', ${year}, 1)
+      ON CONFLICT ("organizationId", "prefix", "type", "year")
       DO UPDATE SET "lastValue" = "DocumentCounter"."lastValue" + 1
       RETURNING "lastValue";
     `;

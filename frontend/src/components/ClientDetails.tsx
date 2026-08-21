@@ -64,6 +64,7 @@ const ClientDetails: React.FC = () => {
           const updated = await api.saveClient({ _id: id, ...editForm, events: client?.events || [] } as any);
           setClient(updated);
           setIsEditing(false);
+          window.dispatchEvent(new CustomEvent('clients-updated'));
           api.logActivity({ action: `Updated client: ${editForm.name}`, type: 'Update', actorId: 'ADMIN', actorName: 'Admin', actorRole: 'Admin' });
       } catch (err) {
           console.error("Update failed", err);

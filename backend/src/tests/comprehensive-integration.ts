@@ -1719,21 +1719,34 @@ async function runTests() {
   });
 
   await testCase('Events: client update synchronizes events', async () => {
-    let eventDeletedMany = false;
-    let eventCreateManyPayload: any = null;
+    let eventDeletedIds: string[] = [];
+    let eventCreatedPayload: any = null;
+    let eventUpdatedPayload: any = null;
+    void eventUpdatedPayload;
 
     mockPrisma.client.findFirst = async () => ({ id: 'client-update-events-id', name: 'Jane Doe', email: 'jane@doe.com' });
     mockPrisma.client.update = async (args: any) => ({ id: 'client-update-events-id', ...args.data });
     mockPrisma.user.updateMany = async () => ({ count: 1 });
+
+    mockPrisma.event.findMany = async () => [
+      { id: 'event-custom-1', name: 'Old Event', date: new Date() }
+    ];
+
     mockPrisma.event.deleteMany = async (args: any) => {
-      if (args.where.clientId === 'client-update-events-id') {
-        eventDeletedMany = true;
+      if (args.where.id && args.where.id.in) {
+        eventDeletedIds = args.where.id.in;
       }
       return { count: 1 };
     };
-    mockPrisma.event.createMany = async (args: any) => {
-      eventCreateManyPayload = args.data;
-      return { count: args.data.length };
+
+    mockPrisma.event.update = async (args: any) => {
+      eventUpdatedPayload = args.data;
+      return { id: args.where.id };
+    };
+
+    mockPrisma.event.create = async (args: any) => {
+      eventCreatedPayload = args.data;
+      return { id: args.data.id };
     };
 
     const clientPayload = {
@@ -1757,15 +1770,16 @@ async function runTests() {
     if (statusCode !== 200) {
       throw new Error(`Expected 200 OK, got ${statusCode}`);
     }
-    if (!eventDeletedMany) {
-      throw new Error('Existing events were not deleted before syncing new ones.');
+    // event-custom-1 should be deleted differentially
+    if (!eventDeletedIds.includes('event-custom-1')) {
+      throw new Error('Existing event-custom-1 was not deleted during differential sync.');
     }
-    if (!eventCreateManyPayload || eventCreateManyPayload.length !== 1) {
-      throw new Error('New events were not synchronized during client update.');
+    // event-custom-2 should be created
+    if (!eventCreatedPayload || eventCreatedPayload.id !== 'event-custom-2') {
+      throw new Error('New event-custom-2 was not created during differential sync.');
     }
-    const ev = eventCreateManyPayload[0];
-    if (ev.id !== 'event-custom-2' || ev.clientId !== 'client-update-events-id' || ev.name !== 'Engagement' || ev.status !== 'Completed') {
-      throw new Error('Event synchronization update payload contains incorrect fields.');
+    if (eventCreatedPayload.name !== 'Engagement' || eventCreatedPayload.status !== 'Completed') {
+      throw new Error('Created event contains incorrect fields.');
     }
   });
 

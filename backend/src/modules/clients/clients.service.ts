@@ -35,7 +35,7 @@ export class ClientsService {
     // Run inside database transaction
     const client = await prisma.$transaction(async (tx) => {
       // 1. Generate unique sequential client display ID
-      const clientCode = await DisplayIdGenerator.getNextId('CLI', tx);
+      const clientCode = await DisplayIdGenerator.getNextId('CLI', tx, orgId);
 
       // 2. Create client record
       const newClient = await tx.client.create({
@@ -76,7 +76,7 @@ export class ClientsService {
       if (events && events.length > 0) {
         const eventsData = [];
         for (const ev of events) {
-          const eventCode = await DisplayIdGenerator.getNextId('EVT', tx);
+          const eventCode = await DisplayIdGenerator.getNextId('EVT', tx, orgId);
           eventsData.push({
             id: ev.id,
             organizationId: orgId,
@@ -101,7 +101,7 @@ export class ClientsService {
       }
 
       // 5. Provision default Project record
-      const projectCode = await DisplayIdGenerator.getNextId('PRJ', tx);
+      const projectCode = await DisplayIdGenerator.getNextId('PRJ', tx, orgId);
       await tx.project.create({
         data: {
           organizationId: orgId,
@@ -159,39 +159,71 @@ export class ClientsService {
         });
       }
 
-      // 3. Sync events
+      // 3. Sync events differentially
       if (events) {
-        // Delete all existing events for this client
-        await tx.event.deleteMany({
+        // Fetch existing events from database for this client and organization context
+        const dbEvents = await tx.event.findMany({
           where: { clientId: id, organizationId: orgId },
         });
+        const dbEventIds = dbEvents.map((e) => e.id);
+        const payloadEventIds = events.map((ev: any) => ev.id).filter(Boolean);
 
-        // Create new ones
-        if (events.length > 0) {
-          const eventsData = [];
-          for (const ev of events) {
-            const eventCode = ev.eventCode || await DisplayIdGenerator.getNextId('EVT', tx);
-            eventsData.push({
-              id: ev.id,
-              organizationId: orgId,
+        // Identify event IDs to delete (exist in DB but not in payload)
+        const eventIdsToDelete = dbEventIds.filter((dbId) => !payloadEventIds.includes(dbId));
+        if (eventIdsToDelete.length > 0) {
+          await tx.event.deleteMany({
+            where: {
+              id: { in: eventIdsToDelete },
               clientId: id,
-              name: ev.name,
-              date: new Date(ev.date),
-              startTime: ev.startTime || null,
-              endTime: ev.endTime || null,
-              progress: ev.progress || 0,
-              actualCompletedAt: ev.actualCompletedAt ? new Date(ev.actualCompletedAt) : null,
-              brideLocation: ev.brideLocation || null,
-              groomLocation: ev.groomLocation || null,
-              venueLocation: ev.venueLocation || null,
-              notes: ev.notes || null,
-              status: ev.status || 'Scheduled',
-              eventCode,
+              organizationId: orgId,
+            },
+          });
+        }
+
+        // Process additions and updates
+        for (const ev of events) {
+          const isExisting = ev.id && dbEventIds.includes(ev.id);
+          if (isExisting) {
+            // Update existing event in place
+            await tx.event.update({
+              where: { id: ev.id, organizationId: orgId },
+              data: {
+                name: ev.name,
+                date: new Date(ev.date),
+                startTime: ev.startTime || null,
+                endTime: ev.endTime || null,
+                progress: ev.progress || 0,
+                actualCompletedAt: ev.actualCompletedAt ? new Date(ev.actualCompletedAt) : null,
+                brideLocation: ev.brideLocation || null,
+                groomLocation: ev.groomLocation || null,
+                venueLocation: ev.venueLocation || null,
+                notes: ev.notes || null,
+                status: ev.status || 'Scheduled',
+              },
+            });
+          } else {
+            // Create new event record
+            const eventCode = ev.eventCode || (await DisplayIdGenerator.getNextId('EVT', tx, orgId));
+            await tx.event.create({
+              data: {
+                id: ev.id || `event_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                organizationId: orgId,
+                clientId: id,
+                name: ev.name,
+                date: new Date(ev.date),
+                startTime: ev.startTime || null,
+                endTime: ev.endTime || null,
+                progress: ev.progress || 0,
+                actualCompletedAt: ev.actualCompletedAt ? new Date(ev.actualCompletedAt) : null,
+                brideLocation: ev.brideLocation || null,
+                groomLocation: ev.groomLocation || null,
+                venueLocation: ev.venueLocation || null,
+                notes: ev.notes || null,
+                status: ev.status || 'Scheduled',
+                eventCode,
+              },
             });
           }
-          await tx.event.createMany({
-            data: eventsData,
-          });
         }
       }
 

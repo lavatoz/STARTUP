@@ -183,6 +183,8 @@ const ClientDetailsPage: React.FC = () => {
          });
          setIsSaving(false);
          addToast("Event Created successfully");
+         window.dispatchEvent(new CustomEvent('clients-updated'));
+         window.dispatchEvent(new CustomEvent('tasks-updated'));
 
          // Separately attempt coordination task creation if a valid project is available
          if (project?.id) {
@@ -272,6 +274,8 @@ const ClientDetailsPage: React.FC = () => {
          setClient(updatedClient);
 
          addToast("Event Updated Successfully");
+         window.dispatchEvent(new CustomEvent('clients-updated'));
+         window.dispatchEvent(new CustomEvent('tasks-updated'));
          setIsEditEventModalOpen(false);
          setEditingEvent(null);
       } catch (err) {
@@ -300,6 +304,7 @@ const ClientDetailsPage: React.FC = () => {
          await api.saveClient(updatedClient);
          setClient(updatedClient);
          addToast("Project Information Updated");
+         window.dispatchEvent(new CustomEvent('clients-updated'));
          setIsEditProjectModalOpen(false);
       } catch (err) {
          console.error("Failed to update project info:", err);
@@ -326,6 +331,8 @@ const ClientDetailsPage: React.FC = () => {
          }
 
          addToast("Event Deleted Successfully");
+          window.dispatchEvent(new CustomEvent('clients-updated'));
+          window.dispatchEvent(new CustomEvent('tasks-updated'));
       } catch (err) {
          console.error("Failed to delete event:", err);
          addToast("Failed to delete event");

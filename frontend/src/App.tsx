@@ -289,7 +289,7 @@ const App: React.FC = () => {
     fetchData(false);
   };
   const [error, setError] = useState<string | null>(null);
-  const [hasFetched, setHasFetched] = useState(false);
+
   const fetchInitiated = useRef(false);
   const messagingInitialized = useRef(false);
   const foregroundUnsubscribe = useRef<(() => void) | null>(null);
@@ -359,6 +359,14 @@ const App: React.FC = () => {
     return () => window.removeEventListener('tasks-updated', handleSync);
   }, []);
 
+  useEffect(() => {
+    const handleSync = () => {
+      fetchData(true);
+    };
+    window.addEventListener('clients-updated', handleSync);
+    return () => window.removeEventListener('clients-updated', handleSync);
+  }, []);
+
   // Cross-tab multi-session synchronization & Tab activation listeners
   useEffect(() => {
     const syncAuthState = () => {
@@ -404,11 +412,10 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (authRole !== 'none') {
+    if (authRole !== 'none' && activeOrg) {
       if (!fetchInitiated.current) {
         fetchInitiated.current = true;
         fetchData(false);
-        setHasFetched(true);
       }
       // Request permission and register listeners exactly once per authenticated session
       if (!messagingInitialized.current) {
@@ -434,9 +441,8 @@ const App: React.FC = () => {
             });
         });
       }
-    } else {
+    } else if (authRole === 'none') {
       setIsInitialLoading(false);
-      setHasFetched(false);
       fetchInitiated.current = false;
       // Cleanup messaging resources on unauthenticated/logout states
       if (foregroundUnsubscribe.current) {
@@ -448,7 +454,7 @@ const App: React.FC = () => {
         clearMessagingSession();
       });
     }
-  }, [authRole, hasFetched]);
+  }, [authRole, activeOrg]);
 
   // Theme Engine Application
   useEffect(() => {

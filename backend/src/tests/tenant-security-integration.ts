@@ -846,6 +846,343 @@ export async function runTests() {
     }
   });
 
+  // ----------------------------------------------------
+  // PHASE 6 REGRESSION TESTS
+  // ----------------------------------------------------
+
+  // Import ClientsService for testing updates
+  const { ClientsService } = require('../modules/clients/clients.service');
+
+  await testCase('Phase 6.1 TEST 1: Update client name preserves Event and Task', async () => {
+    // 1. Setup mock client, event, task
+    const testClient = await prisma.client.create({
+      data: {
+        id: 'p6-client-1',
+        organizationId: orgA.id,
+        name: 'Initial Client Name',
+        email: 'p6-client-1@apco.com',
+        clientCode: 'CLI-P6-1',
+      }
+    });
+
+    const testEvent = await prisma.event.create({
+      data: {
+        id: 'p6-event-1',
+        organizationId: orgA.id,
+        clientId: testClient.id,
+        name: 'Wedding Ceremony',
+        date: new Date('2026-09-01'),
+        eventCode: 'EVT-P6-1',
+      }
+    });
+
+    const testTask = await prisma.task.create({
+      data: {
+        id: 'p6-task-1',
+        organizationId: orgA.id,
+        title: 'Event Setup Task',
+        status: 'Pending',
+        brand: 'Studio',
+        eventId: testEvent.id,
+        dueDate: new Date('2026-09-01'),
+      }
+    });
+
+    try {
+      // 2. Call updateClient (simulating payload matching frontend format)
+      await ClientsService.updateClient(
+        testClient.id,
+        {
+          name: 'Updated Client Name',
+          events: [
+            {
+              id: testEvent.id,
+              name: 'Wedding Ceremony',
+              date: '2026-09-01',
+              eventCode: 'EVT-P6-1',
+            }
+          ]
+        },
+        { ...userA, organizationId: orgA.id },
+        testClient
+      );
+
+      // 3. Verify
+      const updatedClient = await prisma.client.findUnique({ where: { id: testClient.id } });
+      const currentEvent = await prisma.event.findUnique({ where: { id: testEvent.id } });
+      const currentTask = await prisma.task.findUnique({ where: { id: testTask.id } });
+
+      if (!updatedClient || updatedClient.name !== 'Updated Client Name') {
+        throw new Error('Client name was not updated correctly.');
+      }
+      if (!currentEvent) {
+        throw new Error('Event was deleted during client update!');
+      }
+      if (currentEvent.id !== testEvent.id) {
+        throw new Error('Event ID changed!');
+      }
+      if (!currentTask) {
+        throw new Error('Task was deleted due to cascading deletion!');
+      }
+      if (currentTask.eventId !== testEvent.id) {
+        throw new Error('Task eventId linkage was broken!');
+      }
+    } finally {
+      // Cleanup
+      await prisma.task.deleteMany({ where: { id: 'p6-task-1' } });
+      await prisma.event.deleteMany({ where: { id: 'p6-event-1' } });
+      await prisma.client.deleteMany({ where: { id: 'p6-client-1' } });
+    }
+  });
+
+  await testCase('Phase 6.1 TEST 2: Update client preserves PersonnelEventAssignment', async () => {
+    // 1. Setup mock client, event, personnel, assignment
+    const testClient = await prisma.client.create({
+      data: {
+        id: 'p6-client-2',
+        organizationId: orgA.id,
+        name: 'P6 Client 2',
+        email: 'p6-client-2@apco.com',
+        clientCode: 'CLI-P6-2',
+      }
+    });
+
+    const testEvent = await prisma.event.create({
+      data: {
+        id: 'p6-event-2',
+        organizationId: orgA.id,
+        clientId: testClient.id,
+        name: 'Reception',
+        date: new Date('2026-09-02'),
+        eventCode: 'EVT-P6-2',
+      }
+    });
+
+    const testPersonnel = await prisma.personnel.create({
+      data: {
+        id: 'p6-pers-2',
+        organizationId: orgA.id,
+        name: 'Photographer John',
+        role: 'Photographer',
+        phone: '1234567890',
+        email: 'john@apco.com',
+      }
+    });
+
+    const testAssignment = await prisma.personnelEventAssignment.create({
+      data: {
+        id: 'p6-assign-2',
+        personnelId: testPersonnel.id,
+        eventId: testEvent.id,
+        assignedBy: 'System',
+      }
+    });
+
+    try {
+      // 2. Call updateClient
+      await ClientsService.updateClient(
+        testClient.id,
+        {
+          name: 'Updated P6 Client 2',
+          events: [
+            {
+              id: testEvent.id,
+              name: 'Reception',
+              date: '2026-09-02',
+              eventCode: 'EVT-P6-2',
+            }
+          ]
+        },
+        { ...userA, organizationId: orgA.id },
+        testClient
+      );
+
+      // 3. Verify
+      const currentAssignment = await prisma.personnelEventAssignment.findUnique({ where: { id: testAssignment.id } });
+      if (!currentAssignment) {
+        throw new Error('Personnel assignment was deleted due to cascading deletion!');
+      }
+    } finally {
+      // Cleanup
+      await prisma.personnelEventAssignment.deleteMany({ where: { id: 'p6-assign-2' } });
+      await prisma.personnel.deleteMany({ where: { id: 'p6-pers-2' } });
+      await prisma.event.deleteMany({ where: { id: 'p6-event-2' } });
+      await prisma.client.deleteMany({ where: { id: 'p6-client-2' } });
+    }
+  });
+
+  await testCase('Phase 6.1 TEST 3: Add new event preserves existing Event IDs', async () => {
+    // 1. Setup client with Event A and Event B
+    const testClient = await prisma.client.create({
+      data: {
+        id: 'p6-client-3',
+        organizationId: orgA.id,
+        name: 'P6 Client 3',
+        email: 'p6-client-3@apco.com',
+        clientCode: 'CLI-P6-3',
+      }
+    });
+
+    const eventA = await prisma.event.create({
+      data: {
+        id: 'p6-event-3-a',
+        organizationId: orgA.id,
+        clientId: testClient.id,
+        name: 'Event A',
+        date: new Date('2026-09-03'),
+        eventCode: 'EVT-P6-3A',
+      }
+    });
+
+    const eventB = await prisma.event.create({
+      data: {
+        id: 'p6-event-3-b',
+        organizationId: orgA.id,
+        clientId: testClient.id,
+        name: 'Event B',
+        date: new Date('2026-09-04'),
+        eventCode: 'EVT-P6-3B',
+      }
+    });
+
+    try {
+      // 2. Call updateClient adding Event C
+      await ClientsService.updateClient(
+        testClient.id,
+        {
+          name: 'P6 Client 3',
+          events: [
+            {
+              id: eventA.id,
+              name: 'Event A',
+              date: '2026-09-03',
+              eventCode: 'EVT-P6-3A',
+            },
+            {
+              id: eventB.id,
+              name: 'Event B',
+              date: '2026-09-04',
+              eventCode: 'EVT-P6-3B',
+            },
+            {
+              id: 'p6-event-3-c',
+              name: 'Event C',
+              date: '2026-09-05',
+            }
+          ]
+        },
+        { ...userA, organizationId: orgA.id },
+        testClient
+      );
+
+      // 3. Verify
+      const currentA = await prisma.event.findUnique({ where: { id: eventA.id } });
+      const currentB = await prisma.event.findUnique({ where: { id: eventB.id } });
+      const currentC = await prisma.event.findUnique({ where: { id: 'p6-event-3-c' } });
+
+      if (!currentA || currentA.id !== eventA.id) {
+        throw new Error('Event A ID changed or deleted!');
+      }
+      if (!currentB || currentB.id !== eventB.id) {
+        throw new Error('Event B ID changed or deleted!');
+      }
+      if (!currentC) {
+        throw new Error('Event C was not created!');
+      }
+    } finally {
+      // Cleanup
+      await prisma.event.deleteMany({ where: { id: { in: ['p6-event-3-a', 'p6-event-3-b', 'p6-event-3-c'] } } });
+      await prisma.client.deleteMany({ where: { id: 'p6-client-3' } });
+    }
+  });
+
+  await testCase('Phase 6.1 TEST 4: Explicit event deletion cascade behavior', async () => {
+    // 1. Setup client with Event A and Event B, task on Event B
+    const testClient = await prisma.client.create({
+      data: {
+        id: 'p6-client-4',
+        organizationId: orgA.id,
+        name: 'P6 Client 4',
+        email: 'p6-client-4@apco.com',
+        clientCode: 'CLI-P6-4',
+      }
+    });
+
+    const eventA = await prisma.event.create({
+      data: {
+        id: 'p6-event-4-a',
+        organizationId: orgA.id,
+        clientId: testClient.id,
+        name: 'Event A',
+        date: new Date('2026-09-06'),
+        eventCode: 'EVT-P6-4A',
+      }
+    });
+
+    const eventB = await prisma.event.create({
+      data: {
+        id: 'p6-event-4-b',
+        organizationId: orgA.id,
+        clientId: testClient.id,
+        name: 'Event B',
+        date: new Date('2026-09-07'),
+        eventCode: 'EVT-P6-4B',
+      }
+    });
+
+    const testTask = await prisma.task.create({
+      data: {
+        id: 'p6-task-4',
+        organizationId: orgA.id,
+        title: 'Event B setup',
+        status: 'Pending',
+        brand: 'Studio',
+        eventId: eventB.id,
+        dueDate: new Date('2026-09-07'),
+      }
+    });
+
+    try {
+      // 2. Call updateClient omitting Event B (explicit deletion request from UI)
+      await ClientsService.updateClient(
+        testClient.id,
+        {
+          name: 'P6 Client 4',
+          events: [
+            {
+              id: eventA.id,
+              name: 'Event A',
+              date: '2026-09-06',
+              eventCode: 'EVT-P6-4A',
+            }
+          ]
+        },
+        { ...userA, organizationId: orgA.id },
+        testClient
+      );
+
+      // 3. Verify
+      const currentA = await prisma.event.findUnique({ where: { id: eventA.id } });
+      const currentB = await prisma.event.findUnique({ where: { id: eventB.id } });
+      const currentTask = await prisma.task.findUnique({ where: { id: testTask.id } });
+
+      if (!currentA) {
+        throw new Error('Event A was deleted, but should remain untouched!');
+      }
+      if (currentB) {
+        throw new Error('Event B was not deleted!');
+      }
+      if (currentTask) {
+        throw new Error('Task for Event B was not cascade deleted!');
+      }
+    } finally {
+      // Cleanup
+      await prisma.task.deleteMany({ where: { id: 'p6-task-4' } });
+      await prisma.event.deleteMany({ where: { id: { in: ['p6-event-4-a', 'p6-event-4-b'] } } });
+      await prisma.client.deleteMany({ where: { id: 'p6-client-4' } });
+    }
+  });
+
   console.log(`\n📊 Tenant Security Integration Tests Summary:`);
   console.log(`   Passed: ${passed}`);
   console.log(`   Failed: ${failed}`);
