@@ -1,0 +1,1108 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  platformRole        PlatformRole      @default(USER)
+  organizationMembers OrganizationMember[]
+  id                  String            @id @default(uuid())
+  email               String            @unique
+  passwordHash        String?
+  firstName           String
+  lastName            String
+  role                Role
+  failedLoginAttempts Int               @default(0)
+  lockedUntil         DateTime?
+  emailVerified       Boolean           @default(false)
+  verificationToken   String?
+  resetToken          String?
+  resetTokenExpires   DateTime?
+  mustChangePassword  Boolean           @default(false)
+  mfaEnabled          Boolean           @default(false)
+  mfaSecret           String?
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+  linkedClientId      String?           @unique
+  setupToken          String?           @unique
+  status              String            @default("Active")
+  auditLogs           AuditLog[]
+  files               File[]
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+  securityEvents      SecurityEvent[]
+  staffAssignments    StaffAssignment[]
+  tasks               Task[]
+  linkedClient        Client?           @relation(fields: [linkedClientId], references: [id])
+  sessions            UserSession[]
+  workflowStages      WorkflowStage[]
+  workflowActivities  WorkflowActivity[]
+  deviceTokens        DeviceToken[]
+  projectMessages     ProjectMessage[]
+}
+
+model RefreshToken {
+  membershipId    String?
+  membership      OrganizationMember? @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  id              String        @id @default(uuid())
+  tokenHash       String        @unique
+  userId          String
+  parentTokenHash String?
+  isRevoked       Boolean       @default(false)
+  expiresAt       DateTime
+  createdAt       DateTime      @default(now())
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions        UserSession[]
+
+  @@index([tokenHash])
+}
+
+model UserSession {
+  membershipId   String?
+  membership     OrganizationMember? @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  id             String        @id @default(uuid())
+  userId         String
+  refreshTokenId String?
+  deviceName     String?
+  ipAddress      String?
+  userAgent      String?
+  lastSeenAt     DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  refreshToken   RefreshToken? @relation(fields: [refreshTokenId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Client {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id          String      @id @default(uuid())
+  clientCode  String      @unique
+  name        String
+  email       String      @unique
+  phone       String?
+  address     String?
+  companyName String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  deletedAt   DateTime?
+  agreements  Agreement[]
+  expenses    Expense[]
+  invoices    Invoice[]
+  projects    Project[]
+  quotations  Quotation[]
+  tasks       Task[]
+  user        User?
+  events      Event[]
+  standaloneAgreements StandaloneAgreement[]
+  photoSelections PhotoSelection[]
+  photoReviews    PhotoReview[]
+
+  @@index([organizationId])
+}
+
+model Project {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id                   String            @id @default(uuid())
+  projectCode          String            @unique
+  name                 String
+  description          String?
+  status               String            @default("Draft")
+  clientId             String
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  deletedAt            DateTime?
+  driveFolderId        String?
+  galleryFolderId      String?
+  deliverablesFolderId String?
+  agreementsFolderId   String?
+  invoicesFolderId     String?
+  quotationsFolderId   String?
+  stage                String            @default("Booked")
+  agreements           Agreement[]
+  files                File[]
+  invoices             Invoice[]
+  client               Client            @relation(fields: [clientId], references: [id])
+  quotations           Quotation[]
+  staffAssignments     StaffAssignment[]
+  tasks                Task[]
+  workflowEvents       WorkflowEvent[]
+  workflowStages       WorkflowStage[]
+  gallery              ProjectGallery?
+  galleryPhotos        GalleryPhoto[]
+  photoSelections      PhotoSelection[]
+  photoReviews         PhotoReview[]
+  projectMessages      ProjectMessage[]
+
+  @@index([organizationId])
+}
+
+model StaffAssignment {
+  id         String   @id @default(uuid())
+  projectId  String
+  userId     String
+  role       Role
+  assignedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  eventIds   String[] @default([])
+}
+
+model Invoice {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id              String        @id @default(uuid())
+  invoiceCode     String        @unique
+  invoiceNumber   String        @unique
+  amount          Decimal       @db.Decimal(12, 2)
+  status          String        @default("Draft")
+  projectId       String
+  clientId        String
+  dueDate         DateTime
+  issuedAt        DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime?
+  brand           String?
+  brandId         String?
+  companyLogoUrl  String?
+  discountType    String?
+  discountValue   Decimal?      @db.Decimal(12, 2)
+  notes           String?
+  paymentTerms    String?
+  shippingCost    Decimal?      @db.Decimal(12, 2)
+  taxPercent      Decimal?      @db.Decimal(5, 2)
+  templateId      String?
+  templateVersion String?
+  termsSummary    String?
+  client          Client        @relation(fields: [clientId], references: [id])
+  project         Project       @relation(fields: [projectId], references: [id])
+  items           InvoiceItem[]
+  payments        Payment[]
+
+  @@index([organizationId])
+}
+
+model Quotation {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id              String          @id @default(uuid())
+  quotationCode   String          @unique
+  quotationNumber String          @unique
+  amount          Decimal         @db.Decimal(12, 2)
+  status          String          @default("Draft")
+  projectId       String
+  clientId        String
+  validUntil      DateTime
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deletedAt       DateTime?
+  brand           String?
+  brandId         String?
+  companyLogoUrl  String?
+  discountType    String?
+  discountValue   Decimal?        @db.Decimal(12, 2)
+  notes           String?
+  paymentTerms    String?
+  shippingCost    Decimal?        @db.Decimal(12, 2)
+  taxPercent      Decimal?        @db.Decimal(5, 2)
+  templateId      String?
+  templateVersion String?
+  termsSummary    String?
+  client          Client          @relation(fields: [clientId], references: [id])
+  project         Project         @relation(fields: [projectId], references: [id])
+  items           QuotationItem[]
+
+  @@index([organizationId])
+}
+
+model Agreement {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id              String    @id @default(uuid())
+  agreementNumber String    @unique
+  status          String    @default("Draft")
+  projectId       String
+  clientId        String
+  fileId          String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  deletedAt       DateTime?
+  client          Client    @relation(fields: [clientId], references: [id])
+  file            File?     @relation(fields: [fileId], references: [id])
+  project         Project   @relation(fields: [projectId], references: [id])
+
+  @@index([organizationId])
+}
+
+model Payment {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id            String   @id @default(uuid())
+  amount        Decimal  @db.Decimal(12, 2)
+  status        String
+  paymentMethod String
+  transactionId String?
+  invoiceId     String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  invoice       Invoice  @relation(fields: [invoiceId], references: [id])
+
+  @@index([organizationId])
+}
+
+model File {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id                  String      @id @default(uuid())
+  key                 String      @unique
+  originalName        String
+  mimeType            String
+  size                Int
+  hash                String
+  isSecured           Boolean     @default(false)
+  projectId           String?
+  userId              String?
+  createdAt           DateTime    @default(now())
+  updatedAt           DateTime    @updatedAt
+  deletedAt           DateTime?
+  googleDriveFileId   String?
+  googleDriveViewLink String?
+  category            String?
+  agreements          Agreement[]
+  project             Project?    @relation(fields: [projectId], references: [id])
+  user                User?       @relation(fields: [userId], references: [id])
+  workflowStageAttachments WorkflowStageAttachment[]
+  galleryPhotos       GalleryPhoto[]
+
+  @@index([projectId, category])
+
+  @@index([organizationId])
+}
+
+model WorkflowEvent {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id          String   @id @default(uuid())
+  projectId   String
+  eventType   String
+  description String
+  payload     Json?
+  createdAt   DateTime @default(now())
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Notification {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id        String   @id @default(uuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead, createdAt])
+
+  @@index([organizationId])
+}
+
+model AuditLog {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id        String   @id @default(uuid())
+  userId    String?
+  action    String
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  requestId String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+}
+
+model SecurityEvent {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id        String   @id @default(uuid())
+  userId    String?
+  eventType String
+  details   Json?
+  ipAddress String?
+  userAgent String?
+  requestId String?
+  createdAt DateTime @default(now())
+  user      User?    @relation(fields: [userId], references: [id])
+
+  @@index([organizationId])
+}
+
+model CompanyProfile {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id               String    @id @default(uuid())
+  companyName      String
+  tagline          String?
+  projectType      String
+  logo             String?
+  email            String
+  phone            String
+  address          String?
+  gstin            String?
+  pan              String?
+  website          String?
+  invoicePrefix    String
+  upiId            String?
+  bankDetails      Json?
+  paymentTerms     String    @default("Due on Receipt")
+  invoiceNotes     String?
+  primaryColor     String    @default("#3B82F6")
+  themePreset      String    @default("default")
+  graphicsPreset   String    @default("default")
+  typographyPreset String    @default("default")
+  portalConfig     Json?
+  isDefault        Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
+
+  @@index([organizationId])
+}
+
+model GlobalSetting {
+  key         String   @id @unique
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model DocumentCounter {
+  organizationId String
+  prefix         String
+  type           String
+  year           Int
+  lastValue      Int    @default(0)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, prefix, type, year])
+}
+
+model InvoiceItem {
+  id          String   @id @default(uuid())
+  invoiceId   String
+  description String
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(12, 2)
+  amount      Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  invoice     Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+}
+
+model QuotationItem {
+  id          String    @id @default(uuid())
+  quotationId String
+  description String
+  quantity    Int
+  unitPrice   Decimal   @db.Decimal(12, 2)
+  amount      Decimal   @db.Decimal(12, 2)
+  createdAt   DateTime  @default(now())
+  quotation   Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+}
+
+model Expense {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id          String    @id @default(uuid())
+  description String
+  amount      Decimal   @db.Decimal(12, 2)
+  category    String
+  date        DateTime
+  clientId    String?
+  brand       String
+  divisionId  String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime?
+  client      Client?   @relation(fields: [clientId], references: [id])
+
+  @@index([organizationId])
+}
+
+model Task {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id             String   @id @default(uuid())
+  title          String
+  assignee       String   @default("Unassigned")
+  dueDate        DateTime
+  status         String   @default("Pending")
+  brand          String
+  priority       String   @default("High")
+  clientId       String?
+  projectId      String?
+  assignedUserId String?
+  eventId        String?
+  event          Event?   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  assignedUser   User?    @relation(fields: [assignedUserId], references: [id])
+  client         Client?  @relation(fields: [clientId], references: [id])
+  project        Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+}
+
+model Approval {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id             String    @id @default(uuid())
+  type           String
+  targetId       String
+  targetType     String
+  clientName     String
+  brandName      String?
+  amount         Decimal   @db.Decimal(12, 2)
+  submissionDate DateTime  @default(now())
+  status         String    @default("Pending Approval")
+  notes          String?
+  metadata       Json?
+  approvedBy     String?
+  approvedDate   DateTime?
+  rejectedBy     String?
+  rejectedDate   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([organizationId])
+}
+
+model Personnel {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id          String                     @id @default(uuid())
+  name        String
+  role        String
+  phone       String?
+  email       String?
+  rate        Decimal?                   @db.Decimal(12, 2)
+  status      String                     @default("Active")
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+  assignments PersonnelEventAssignment[]
+
+  @@index([organizationId])
+}
+
+model PersonnelEventAssignment {
+  id          String    @id @default(uuid())
+  personnelId String
+  eventId     String
+  assignedAt  DateTime  @default(now())
+  assignedBy  String
+  notes       String?
+
+  personnel   Personnel @relation(fields: [personnelId], references: [id], onDelete: Cascade)
+  event       Event     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([personnelId, eventId])
+}
+
+model AgreementTemplate {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id        String   @id @default(uuid())
+  title     String
+  body      String
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+model CustomTemplate {
+  id        String   @id @default(uuid())
+  name      String
+  type      String
+  config    Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  SystemAdmin
+  Manager
+  Photographer
+  Videographer
+  Editor
+  Assistant
+  Client
+  DroneOperator
+  Designer
+  Marketing
+}
+
+model Event {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id                 String                     @id
+  eventCode          String                     @unique
+  clientId           String
+  name               String
+  date               DateTime
+  startTime          String?
+  endTime            String?
+  progress           Int                        @default(0)
+  actualCompletedAt  DateTime?
+  brideLocation      String?
+  groomLocation      String?
+  venueLocation      String?
+  notes              String?
+  status             String                     @default("Scheduled")
+  createdAt          DateTime                   @default(now())
+  updatedAt          DateTime                   @updatedAt
+  client             Client                     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  tasks              Task[]
+  personnelAssignments PersonnelEventAssignment[]
+
+  @@index([organizationId])
+}
+
+model StandaloneAgreementTemplate {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id        String                @id @default(uuid())
+  name      String
+  version   String
+  content   String
+  isActive  Boolean               @default(true)
+  createdAt DateTime              @default(now())
+  updatedAt DateTime              @updatedAt
+  agreements StandaloneAgreement[]
+
+  @@index([organizationId])
+}
+
+model StandaloneAgreement {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id               String                        @id @default(uuid())
+  agreementCode    String                        @unique
+  clientId         String
+  templateId       String
+  title            String
+  status           AgreementStatus               @default(PENDING)
+  generatedContent String
+  assignedAt       DateTime                      @default(now())
+  signedAt         DateTime?
+  pdfGeneratedAt   DateTime?
+  pdfFilePath      String?
+  createdAt        DateTime                      @default(now())
+  updatedAt        DateTime                      @updatedAt
+  client           Client                        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  template         StandaloneAgreementTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  signatures       StandaloneAgreementSignature[]
+  documents        StandaloneAgreementDocument[]
+  linkedQuoteId    String?
+
+  @@index([organizationId])
+}
+
+model StandaloneAgreementSignature {
+  id                String              @id @default(uuid())
+  agreementId       String
+  signerName        String
+  signatureImageUrl String
+  signedAt          DateTime            @default(now())
+  agreement         StandaloneAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+}
+
+model StandaloneAgreementDocument {
+  id           String              @id @default(uuid())
+  agreementId  String
+  documentType DocumentType
+  fileUrl      String
+  uploadedAt   DateTime            @default(now())
+  agreement    StandaloneAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+}
+
+enum AgreementStatus {
+  PENDING
+  SIGNED
+  REVOKED
+}
+
+enum DocumentType {
+  AADHAAR
+  DRIVING_LICENSE
+  PASSPORT
+  PAN
+  OTHER
+}
+
+enum WorkflowStageType {
+  CLIENT_ONBOARDING
+  AGREEMENT
+  ADVANCE_PAYMENT
+  PRE_PRODUCTION
+  SHOOT
+  POST_PRODUCTION
+  EDITING
+  DELIVERY
+  PROJECT_CLOSURE
+}
+
+enum WorkflowStageStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model WorkflowStage {
+  id           String              @id @default(uuid())
+  projectId    String
+  stageType    WorkflowStageType
+  displayOrder Int
+  status       WorkflowStageStatus @default(PENDING)
+  ownerId      String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  notes        String?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  project      Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  owner        User?               @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  attachments  WorkflowStageAttachment[]
+  activities   WorkflowActivity[]
+
+  @@unique([projectId, stageType])
+  @@index([projectId])
+  @@index([ownerId])
+}
+
+model WorkflowStageAttachment {
+  id              String        @id @default(uuid())
+  workflowStageId String
+  fileId          String
+  fileName        String
+  uploadedBy      String        // User ID
+  createdAt       DateTime      @default(now())
+
+  workflowStage   WorkflowStage @relation(fields: [workflowStageId], references: [id], onDelete: Cascade)
+  file            File          @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([workflowStageId])
+  @@index([fileId])
+}
+
+model WorkflowActivity {
+  id              String              @id @default(uuid())
+  workflowStageId String
+  changedBy       String              // User ID
+  oldStatus       WorkflowStageStatus
+  newStatus       WorkflowStageStatus
+  remarks         String?
+  createdAt       DateTime            @default(now())
+
+  workflowStage   WorkflowStage       @relation(fields: [workflowStageId], references: [id], onDelete: Cascade)
+  user            User                @relation(fields: [changedBy], references: [id], onDelete: Cascade)
+
+  @@index([workflowStageId])
+  @@index([changedBy])
+}
+
+enum GalleryStatus {
+  UPLOADED
+  SELECTION_IN_PROGRESS
+  SELECTION_SUBMITTED
+  READY_FOR_EDITING
+  EDITING
+  EDITED
+  DELIVERED
+}
+
+model ProjectGallery {
+  id              String        @id @default(uuid())
+  projectId       String        @unique
+  currentStatus   GalleryStatus @default(UPLOADED)
+  selectionLocked Boolean       @default(false)
+  submittedAt     DateTime?
+  submittedBy     String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  project         Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+}
+
+model GalleryPhoto {
+  id              String           @id @default(uuid())
+  projectId       String
+  fileId          String
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  project         Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  file            File             @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  selections      PhotoSelection[]
+  reviews         PhotoReview[]
+
+  @@unique([projectId, fileId])
+}
+
+model PhotoSelection {
+  id             String       @id @default(uuid())
+  galleryPhotoId String
+  clientId       String
+  projectId      String
+  selectedAt     DateTime     @default(now())
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  galleryPhoto   GalleryPhoto @relation(fields: [galleryPhotoId], references: [id], onDelete: Cascade)
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([galleryPhotoId, clientId, projectId])
+}
+
+model PhotoReview {
+  id             String       @id @default(uuid())
+  galleryPhotoId String
+  clientId       String
+  projectId      String
+  reviewedAt     DateTime     @default(now())
+
+  galleryPhoto   GalleryPhoto @relation(fields: [galleryPhotoId], references: [id], onDelete: Cascade)
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  project        Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([galleryPhotoId, clientId, projectId])
+}
+
+model DeviceToken {
+  id          String   @id @default(uuid())
+  userId      String
+  token       String   @unique
+  deviceId    String?
+  platform    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastUsedAt  DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model ProjectMessage {
+  id        String    @id @default(uuid())
+  projectId String
+  senderId  String
+  message   String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sender    User      @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, createdAt])
+}
+
+model WebsiteGallery {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id               String   @id @default(uuid())
+  title            String
+  coverImageUrl    String
+  coverImageFileId String
+  instagramUrl     String?
+  published        Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([organizationId])
+}
+
+model Division {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id             String   @id @default(uuid())
+  name           String
+  description    String
+  instagramUrl   String?
+  published      Boolean  @default(false)
+  coverMediaId   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  media          DivisionMedia[]
+
+  @@index([organizationId])
+}
+
+model DivisionMedia {
+  id          String   @id @default(uuid())
+  divisionId  String
+
+  type        DivisionMediaType
+
+  position    Int
+
+  url         String
+
+  fileId      String
+
+  createdAt   DateTime @default(now())
+
+  division    Division @relation(fields: [divisionId], references: [id], onDelete: Cascade)
+}
+
+enum DivisionMediaType {
+  IMAGE
+  VIDEO
+}
+
+model DocumentRegistry {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  documentId      String   @id
+  verificationUrl String
+  documentNumber  String
+  documentType    String
+  clientId        String
+  projectId       String?
+  companyId       String?
+  sha256Hash      String
+  createdAt       DateTime @default(now())
+  status          String   @default("Active")
+
+  @@index([organizationId])
+}
+
+model GalleryCollection {
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  id             String         @id @default(uuid())
+  title          String
+  slug           String         @unique
+  description    String?
+  category       String
+  heroImage      String?
+  coverImage     String?
+  displayOrder   Int            @default(0)
+  isPublished    Boolean        @default(false)
+  seoTitle       String?
+  seoDescription String?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  images         GalleryImage[]
+
+  @@index([slug])
+  @@index([isPublished, displayOrder])
+
+  @@index([organizationId])
+}
+
+model GalleryImage {
+  id           String            @id @default(uuid())
+  collectionId String
+  imageUrl     String
+  thumbnailUrl String?
+  caption      String?
+  altText      String?
+  displayOrder Int               @default(0)
+  isFeatured   Boolean           @default(false)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  collection   GalleryCollection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@index([collectionId, displayOrder])
+}
+
+enum OrganizationRole {
+  OWNER
+  ADMIN
+  MANAGER
+  STAFF
+  ACCOUNTANT
+  CLIENT
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  GRACE_PERIOD
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+enum PlatformRole {
+  SUPER_ADMIN
+  PLATFORM_ADMIN
+  SUPPORT
+  USER
+}
+
+model Organization {
+  id                  String               @id @default(uuid())
+  name                String
+  slug                String               @unique
+  logoUrl             String?
+  faviconUrl          String?
+  primaryColor        String               @default("#F7F5F0")
+  secondaryColor      String               @default("#77736B")
+  accentColor         String               @default("#B89452")
+  themePreset         String               @default("light")
+  coverImageUrl       String?
+  businessDesc        String?
+  contactEmail        String?
+  phone               String?
+  whatsapp            String?
+  address             String?
+  website             String?
+  socialLinks         Json?
+  currency            String               @default("USD")
+  timezone            String               @default("UTC")
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  deletedAt           DateTime?
+
+  members             OrganizationMember[]
+  subscriptions       Subscription[]
+  saasPayments        SaasPayment[]
+  documentCounters    DocumentCounter[]
+  
+  clients             Client[]
+  projects            Project[]
+  events              Event[]
+  tasks               Task[]
+  invoices            Invoice[]
+  quotations          Quotation[]
+  agreements          Agreement[]
+  payments            Payment[]
+  files               File[]
+  workflowEvents      WorkflowEvent[]
+  notifications       Notification[]
+  auditLogs           AuditLog[]
+  securityEvents      SecurityEvent[]
+  companyProfiles     CompanyProfile[]
+  expenses            Expense[]
+  approvals           Approval[]
+  personnel           Personnel[]
+  agreementTemplates  AgreementTemplate[]
+  standaloneAgreementTemplates StandaloneAgreementTemplate[]
+  standaloneAgreements StandaloneAgreement[]
+  websiteGalleries    WebsiteGallery[]
+  divisions           Division[]
+  documentRegistries  DocumentRegistry[]
+  galleryCollections  GalleryCollection[]
+}
+
+model OrganizationMember {
+  id              String           @id @default(uuid())
+  organizationId  String
+  userId          String
+  role            OrganizationRole
+  joinedAt        DateTime         @default(now())
+  status          String           @default("Active")
+  
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user            User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions        UserSession[]
+  refreshTokens   RefreshToken[]
+
+  @@unique([organizationId, userId])
+}
+
+model Plan {
+  id            String         @id @default(uuid())
+  name          String         @unique
+  description   String?
+  price         Decimal        @db.Decimal(12, 2)
+  interval      String         @default("month")
+  features      Json
+  limits        Json
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  subscriptions Subscription[]
+}
+
+model Subscription {
+  id                     String             @id @default(uuid())
+  organizationId         String
+  planId                 String
+  status                 SubscriptionStatus @default(TRIAL)
+  startDate              DateTime           @default(now())
+  endDate                DateTime?
+  cancelAtPeriodEnd      Boolean            @default(false)
+  currentPeriodStart     DateTime           @default(now())
+  currentPeriodEnd       DateTime
+  paymentMethod          String?
+  providerCustomerId     String?
+  providerSubscriptionId String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  
+  organization           Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  plan                   Plan               @relation(fields: [planId], references: [id])
+  saasPayments           SaasPayment[]
+}
+
+model SaasPayment {
+  id                 String       @id @default(uuid())
+  organizationId     String
+  subscriptionId     String?
+  amount             Decimal      @db.Decimal(12, 2)
+  currency           String       @default("USD")
+  status             String
+  providerPaymentId  String?
+  providerInvoiceId  String?
+  paymentMethod      String?
+  paidAt             DateTime?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+  
+  organization       Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  subscription       Subscription? @relation(fields: [subscriptionId], references: [id])
+}
